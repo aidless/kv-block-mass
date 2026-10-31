@@ -1,0 +1,19 @@
+{
+  "meta": {
+    "timestamp_utc": "2026-10-31T17:27:45.764068+00:00",
+    "device_name": "Tesla T4",
+    "backend": "cuda",
+    "torch": "2.11.0+cu128",
+    "triton": "3.6.0",
+    "python": "3.13.15",
+    "shape": {"B": 1, "H_q": 8, "H_kv": 2, "D": 64, "block_size": 64},
+    "repeats": 5,
+    "note": "recovered from Kaggle worker stdout (v5 run); final write_text hit the read-only /kaggle/src filesystem — rows themselves are complete and were parsed verbatim"
+  },
+  "rows": [
+    {"N": 1024, "reference_ms": 3.4652481079101562, "reference_mib": 46.63427734375, "triton_ms": 4.2612481117248535, "triton_mib": 10.62744140625, "rel_err": 2.237884018541081e-06, "dense_naive_ms": 2.568000078201294, "dense_naive_mib": 109.62646484375},
+    {"N": 2048, "reference_ms": 12.31884765625, "reference_mib": 87.1435546875, "triton_ms": 15.187999725341797, "triton_mib": 13.12939453125, "rel_err": 2.9555390028690454e-06, "dense_naive_ms": 9.750016212463379, "dense_naive_mib": 405.126953125},
+    {"N": 4096, "reference_ms": 40.18080139160156, "reference_mib": 174.1591796875, "triton_ms": 22.588735580444336, "triton_mib": 18.13134765625, "rel_err": 7.465610451617977e-06},
+    {"N": 8192, "reference_ms": 161.3384246826172, "reference_mib": 372.1904296875, "triton_ms": 89.76371002197266, "triton_mib": 28.13525390625, "rel_err": 1.513334791525267e-05}
+  ]
+}

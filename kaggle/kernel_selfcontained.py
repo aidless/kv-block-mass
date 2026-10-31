@@ -228,7 +228,10 @@ def _block_mass_kernel(
     pid_bh = tl.program_id(1)         # flat batch*head id
     b = pid_bh // H_q
     h = pid_bh % H_q
-    kv_h = pid_bh % H_kv              # GQA head mapping: (b*H_q + h) % H_kv
+    kv_h = h // (H_q // H_kv)         # GQA: repeat_interleave semantics —
+                                      # q-head h shares kv-head h // group
+                                      # (NOT h % H_kv; caught by the ROCm
+                                      # bench with raw H_kv=2 inputs)
 
     q_start = pid_m * BLOCK_M
     offs_m = q_start + tl.arange(0, BLOCK_M)
@@ -256,7 +259,7 @@ def _block_mass_kernel(
             mask=row_valid[:, None] & (offs_d[None, :] < D),
             other=0.0,
         )                                                     # [BLOCK_M, D]
-        s = tl.dot(q_tile, tl.trans(k_tile)).to(tl.float32) * scale
+        s = tl.dot(q_tile, tl.trans(k_tile), input_precision="ieee").to(tl.float32) * scale
 
         keep = col_valid[None, :] & row_valid[:, None]
         if CAUSAL:
@@ -295,7 +298,7 @@ def _block_mass_kernel(
             mask=row_valid[:, None] & (offs_d[None, :] < D),
             other=0.0,
         )
-        s = tl.dot(q_tile, tl.trans(k_tile)).to(tl.float32) * scale
+        s = tl.dot(q_tile, tl.trans(k_tile), input_precision="ieee").to(tl.float32) * scale
 
         keep = col_valid[None, :] & row_valid[:, None]
         if CAUSAL:
@@ -315,8 +318,10 @@ def _block_mass_kernel(
         p = tl.where(keep, p, 0.0)
 
         bucket = offs_n // kv_block_size
-        # pointer must be rank-2 to match p; broadcast the 1-D bucket row
-        tl.atomic_add(MASS + bucket[None, :], p)              # [BLOCK_M, BLOCK_N] -> buckets
+        # rank-1 atomic: all query rows share the same key buckets, so fold the
+        # BLOCK_M axis first (identical math, 1/64 the atomic traffic; and
+        # Triton 3.5.1/HIP refuses to auto-broadcast rank-1 pointer tensors)
+        tl.atomic_add(MASS + bucket, tl.sum(p, axis=0))
 
 
 def block_mass_triton(
@@ -477,7 +482,10 @@ if __name__ == '__main__':
             if N in DENSE_NAIVE_NS:
                 t_nv, mem_nv, res_nv = _bench(block_mass_naive, q, k, causal=True, block_size=BLOCK)
                 row["dense_naive_ms"], row["dense_naive_mib"] = t_nv, mem_nv
-                assert (res_nv - res_ref).abs().max().item() < 1e-4
+                # fp32 accumulations differ in summation order; absolute 1e-4 on
+                # O(1e3)-magnitude bucket sums is noise-level — use relative
+                rel_nv = ((res_nv - res_ref).abs().max() / res_ref.abs().max()).item()
+                assert rel_nv < 1e-5, f"N={N}: naive/reference rel err {rel_nv}"
     
             rows.append(row)
             print(json.dumps(row))
@@ -487,8 +495,11 @@ if __name__ == '__main__':
         if out is None:
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             out = str(Path(__file__).parent / f"bench_{_backend()}_{stamp}.json")
-        Path(out).write_text(json.dumps(result, indent=2))
-        print(f"\nwrote {out}")
+        try:
+            Path(out).write_text(json.dumps(result, indent=2))
+            print(f"\nwrote {out}")
+        except OSError as e:  # e.g. read-only FS on Kaggle workers — stdout already
+            print(f"\n(write {out} failed: {e}; JSON above is authoritative)")
     
         # markdown table alongside
         md = [f"# bench @ {meta['device_name']} ({meta['backend']})", "",
@@ -502,8 +513,11 @@ if __name__ == '__main__':
                 f"| {r['triton_ms']:.2f} | {r['triton_mib']:.0f} | {r['rel_err']:.2e} |"
             )
         md_path = str(Path(out).with_suffix(".md"))
-        Path(md_path).write_text("\n".join(md) + "\n")
-        print(f"wrote {md_path}")
+        try:
+            Path(md_path).write_text("\n".join(md) + "\n")
+            print(f"wrote {md_path}")
+        except OSError as e:
+            print("\n".join(md))
     
     
     if __name__ == "__main__":

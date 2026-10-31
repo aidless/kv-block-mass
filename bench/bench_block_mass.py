@@ -97,7 +97,10 @@ def main():
         if N in DENSE_NAIVE_NS:
             t_nv, mem_nv, res_nv = _bench(block_mass_naive, q, k, causal=True, block_size=BLOCK)
             row["dense_naive_ms"], row["dense_naive_mib"] = t_nv, mem_nv
-            assert (res_nv - res_ref).abs().max().item() < 1e-4
+            # fp32 accumulations differ in summation order; absolute 1e-4 on
+            # O(1e3)-magnitude bucket sums is noise-level — use relative
+            rel_nv = ((res_nv - res_ref).abs().max() / res_ref.abs().max()).item()
+            assert rel_nv < 1e-5, f"N={N}: naive/reference rel err {rel_nv}"
 
         rows.append(row)
         print(json.dumps(row))
@@ -107,8 +110,11 @@ def main():
     if out is None:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         out = str(Path(__file__).parent / f"bench_{_backend()}_{stamp}.json")
-    Path(out).write_text(json.dumps(result, indent=2))
-    print(f"\nwrote {out}")
+    try:
+        Path(out).write_text(json.dumps(result, indent=2))
+        print(f"\nwrote {out}")
+    except OSError as e:  # e.g. read-only FS on Kaggle workers — stdout already
+        print(f"\n(write {out} failed: {e}; JSON above is authoritative)")
 
     # markdown table alongside
     md = [f"# bench @ {meta['device_name']} ({meta['backend']})", "",
@@ -122,8 +128,11 @@ def main():
             f"| {r['triton_ms']:.2f} | {r['triton_mib']:.0f} | {r['rel_err']:.2e} |"
         )
     md_path = str(Path(out).with_suffix(".md"))
-    Path(md_path).write_text("\n".join(md) + "\n")
-    print(f"wrote {md_path}")
+    try:
+        Path(md_path).write_text("\n".join(md) + "\n")
+        print(f"wrote {md_path}")
+    except OSError as e:
+        print("\n".join(md))
 
 
 if __name__ == "__main__":

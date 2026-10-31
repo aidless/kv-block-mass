@@ -38,7 +38,10 @@ def _block_mass_kernel(
     pid_bh = tl.program_id(1)         # flat batch*head id
     b = pid_bh // H_q
     h = pid_bh % H_q
-    kv_h = pid_bh % H_kv              # GQA head mapping: (b*H_q + h) % H_kv
+    kv_h = h // (H_q // H_kv)         # GQA: repeat_interleave semantics —
+                                      # q-head h shares kv-head h // group
+                                      # (NOT h % H_kv; caught by the ROCm
+                                      # bench with raw H_kv=2 inputs)
 
     q_start = pid_m * BLOCK_M
     offs_m = q_start + tl.arange(0, BLOCK_M)
@@ -66,7 +69,7 @@ def _block_mass_kernel(
             mask=row_valid[:, None] & (offs_d[None, :] < D),
             other=0.0,
         )                                                     # [BLOCK_M, D]
-        s = tl.dot(q_tile, tl.trans(k_tile)).to(tl.float32) * scale
+        s = tl.dot(q_tile, tl.trans(k_tile), input_precision="ieee").to(tl.float32) * scale
 
         keep = col_valid[None, :] & row_valid[:, None]
         if CAUSAL:
@@ -105,7 +108,7 @@ def _block_mass_kernel(
             mask=row_valid[:, None] & (offs_d[None, :] < D),
             other=0.0,
         )
-        s = tl.dot(q_tile, tl.trans(k_tile)).to(tl.float32) * scale
+        s = tl.dot(q_tile, tl.trans(k_tile), input_precision="ieee").to(tl.float32) * scale
 
         keep = col_valid[None, :] & row_valid[:, None]
         if CAUSAL:
@@ -125,8 +128,10 @@ def _block_mass_kernel(
         p = tl.where(keep, p, 0.0)
 
         bucket = offs_n // kv_block_size
-        # pointer must be rank-2 to match p; broadcast the 1-D bucket row
-        tl.atomic_add(MASS + bucket[None, :], p)              # [BLOCK_M, BLOCK_N] -> buckets
+        # rank-1 atomic: all query rows share the same key buckets, so fold the
+        # BLOCK_M axis first (identical math, 1/64 the atomic traffic; and
+        # Triton 3.5.1/HIP refuses to auto-broadcast rank-1 pointer tensors)
+        tl.atomic_add(MASS + bucket, tl.sum(p, axis=0))
 
 
 def block_mass_triton(

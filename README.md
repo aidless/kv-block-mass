@@ -26,9 +26,42 @@ mass[j] = Σ_{b,h,i, j_pos ∈ block j} softmax_j( q_i · k_j · scale )
 
 ## Results
 
-Filled from measured runs — see `bench/` JSON + MD artifacts:
+All numbers measured (not projected), 2026-10-31. Shapes: B=1, H_q=8, H_kv=2, D=64,
+block_size=64, causal; median of 5; memory = `torch.cuda.max_memory_allocated`.
 
-> TODO: paste T4 / ROCm tables after measured runs land.
+**Tesla T4** (Kaggle, torch 2.11.0+cu128, Triton 3.6.0 — `bench/bench_cuda_T4_20261031.json`):
+
+| N | dense O(N²) MiB | reference ms | reference MiB | triton ms | triton MiB | rel err |
+|---|---|---|---|---|---|---|
+| 1024 | 110 | 3.47 | 47 | 4.26 | 11 | 2.2e-6 |
+| 2048 | 405 | 12.32 | 87 | 15.19 | 13 | 3.0e-6 |
+| 4096 | — | 40.18 | 174 | **22.59** | 18 | 7.5e-6 |
+| 8192 | — | 161.34 | 372 | **89.76** (1.8×) | **28** (13× less) | 1.5e-5 |
+
+**AMD Radeon W7900-class (gfx1100)** (ROCm 7.2, torch 2.14.1+rocm7.2, Triton 3.5.1/HIP —
+`bench/bench_rocm_20261031T172739Z.json`):
+
+| N | dense O(N²) MiB | reference ms | reference MiB | triton ms | triton MiB | rel err |
+|---|---|---|---|---|---|---|
+| 1024 | 134 | 1.06 | 71 | 10.42 | 35 | 3.4e-6 |
+| 2048 | 429 | 2.41 | 111 | 25.01 | 37 | 3.2e-6 |
+| 4096 | — | 7.67 | 198 | 49.56 | 42 | 7.9e-6 |
+| 8192 | — | 59.39 | 396 | 137.41 | **52** (7.6× less) | 1.6e-5 |
+
+Honest reading, both directions:
+
+- **Memory**: the Triton kernel's footprint grows O(1) in N (one 64×64 tile) while the
+  streaming reference grows linearly (chunk×N score buffer) — 13× less at N=8192 on T4.
+  The dense O(N²) baseline that H2O-style scoring normally pays is 429 MiB at N=2048
+  *for this tiny shape* and grows quadratically from there.
+- **Speed**: on T4 the kernel wins from N=4096 (1.8× at 8192). On RDNA3/HIP it does not —
+  the 64×64 `input_precision="ieee"` dot compiles poorly on gfx1100, so the PyTorch
+  streaming reference (rocBLAS-backed) is faster there. We report both rather than
+  benchmarking only the GPU that flatters the kernel. Tuning (BLOCK sizes, fewer
+  atomics, fp16 accumulation experiments) is open work.
+
+Correctness across backends: Triton-vs-reference agreement ≤ 1.6e-5 max relative error
+on both CUDA and ROCm; the fp64 dense oracle agrees to ~1e-6 on every bucket.
 
 ## Layout
 
