@@ -94,9 +94,12 @@ def block_mass_reference(
         # rows that have at least one allowed key — others would softmax to NaN
         row_has_any = rows_keep.any(dim=-1)                   # [C]
 
+        # NOTE: slice ONLY the query axis; keys stay full-length
+        # (slicing k too would give [B,H,C,C] scores and break the [C,N] mask
+        # whenever N > query_chunk — caught by a Kaggle T4 run, see git log)
         scores = torch.matmul(
             q[:, :, start:stop].to(acc_dtype),
-            k_full[:, :, start:stop].to(acc_dtype).transpose(-1, -2),
+            k_full.to(acc_dtype).transpose(-1, -2),
         ) * scale                                             # [B, H, C, N]
 
         scores = scores.masked_fill(~rows_keep, float("-inf"))

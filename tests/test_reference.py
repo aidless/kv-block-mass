@@ -125,6 +125,18 @@ def test_causal_first_row_only_first_block_gets_mass():
     assert mass.shape == (1,)
 
 
+def test_n_greater_than_query_chunk():
+    """N must exceed the default query_chunk=256 to exercise chunked key reuse
+    (a slice-the-keys bug only shows up here; caught on a real T4 run)."""
+    from kvblockmass.reference import block_mass_reference
+
+    q, k = _qk(B=1, H_q=2, H_kv=1, N=600, D=16, seed=59)
+    ref = block_mass_reference(q, k, causal=True, block_size=64, query_chunk=256)
+    nv = block_mass_naive(q, k, causal=True, block_size=64)
+    assert torch.allclose(ref, nv, rtol=1e-5, atol=1e-9)
+    assert ref.sum().item() == pytest.approx(1 * 2 * 600, rel=1e-9)
+
+
 def test_dtype_and_device_arg_accepted():
     """Device argument must be accepted (CPU today, cuda/rocm on runners)."""
     from kvblockmass.reference import block_mass_reference
