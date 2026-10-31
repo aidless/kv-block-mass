@@ -125,7 +125,8 @@ def _block_mass_kernel(
         p = tl.where(keep, p, 0.0)
 
         bucket = offs_n // kv_block_size
-        tl.atomic_add(MASS + bucket, p)                       # [BLOCK_M, BLOCK_N] -> buckets
+        # pointer must be rank-2 to match p; broadcast the 1-D bucket row
+        tl.atomic_add(MASS + bucket[None, :], p)              # [BLOCK_M, BLOCK_N] -> buckets
 
 
 def block_mass_triton(
