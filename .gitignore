@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+bench/bench_*_20*.json
+bench/bench_*_20*.md
+.ipynb_checkpoints/
