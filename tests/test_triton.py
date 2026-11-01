@@ -25,7 +25,8 @@ def _qk(B=2, H_q=4, H_kv=2, N=128, D=32, seed=0, device="cuda", dtype=torch.floa
 
 # ------------------------------------------------------- structural (local)
 def test_kernel_module_structure():
-    from kvblockmass import triton_kernel as tk
+    # triton is a runtime-only dep for the kernel; skip (not fail) when absent
+    tk = pytest.importorskip("kvblockmass.triton_kernel")
 
     assert isinstance(tk._block_mass_kernel, object)
     assert "causal" in inspect.signature(tk.block_mass_triton).parameters

@@ -30,6 +30,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.0"
           pip install pytest
+          # triton is only needed to import the kernel module (structural test);
+          # no GPU is required for import + signature introspection.
+          pip install triton
           pip install -e .
 
       - name: reference + structural tests
