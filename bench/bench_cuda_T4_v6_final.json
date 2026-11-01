@@ -1,0 +1,19 @@
+{
+  "meta": {
+    "timestamp_utc": "2026-10-31T19:5xZ (Kaggle run v6, status COMPLETE)",
+    "device_name": "Tesla T4",
+    "backend": "cuda",
+    "torch": "2.11.0+cu128",
+    "triton": "3.6.0",
+    "shape": {"B": 1, "H_q": 8, "H_kv": 2, "D": 64, "block_size": 64},
+    "repeats": 5,
+    "code": "git 278d479 (GQA mapping fix included)",
+    "note": "final COMPLETE worker run; parsed verbatim from worker stdout (JSON + markdown table both printed in full since the read-only-FS fallback now prints the table)"
+  },
+  "rows": [
+    {"N": 1024, "reference_ms": 3.4241600036621094, "reference_mib": 46.63427734375, "triton_ms": 4.245855808258057, "triton_mib": 10.62744140625, "rel_err": 2.0780350951099535e-06, "dense_naive_ms": 2.5648000240325928, "dense_naive_mib": 109.62646484375},
+    {"N": 2048, "reference_ms": 12.28048038482666, "reference_mib": 87.1435546875, "triton_ms": 15.794048309326172, "triton_mib": 13.12939453125, "rel_err": 2.776014753180789e-06, "dense_naive_ms": 7.8251519203186035, "dense_naive_mib": 405.126953125},
+    {"N": 4096, "reference_ms": 40.21043014526367, "reference_mib": 174.1591796875, "triton_ms": 23.246591567993164, "triton_mib": 18.13134765625, "rel_err": 6.926855348865502e-06},
+    {"N": 8192, "reference_ms": 160.73353576660156, "reference_mib": 372.1904296875, "triton_ms": 91.60671997070312, "triton_mib": 28.13525390625, "rel_err": 1.5027519111754373e-05}
+  ]
+}

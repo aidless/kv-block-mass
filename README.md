@@ -63,6 +63,11 @@ Honest reading, both directions:
 Correctness across backends: Triton-vs-reference agreement ≤ 1.6e-5 max relative error
 on both CUDA and ROCm; the fp64 dense oracle agrees to ~1e-6 on every bucket.
 
+Two independent T4 runs are archived: `bench/bench_cuda_T4_20261031.json` (worker v5,
+numbers recovered from stdout after the final write hit Kaggle's read-only FS) and
+`bench/bench_cuda_T4_v6_final.json` (worker v6, status COMPLETE, code at commit 278d479).
+They agree within run-to-run noise — e.g. N=8192 triton 89.8 vs 91.6 ms, 28 MiB both.
+
 ## Layout
 
 ```
