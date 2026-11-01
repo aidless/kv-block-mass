@@ -145,3 +145,72 @@ def test_dtype_and_device_arg_accepted():
     mass = block_mass_reference(q, k, causal=False, block_size=16, device="cpu")
     assert mass.device.type == "cpu"
     assert mass.dtype == q.dtype
+
+def _recording_matmul(seen, real):
+    """Count matmul calls and, for 4-D score matmuls, the key extent per chunk.
+
+    NOTE: torch.matmul recurses internally (per-head 3-D calls), so the call
+    count alone is not a work measure — the sum of key extents is.
+    """
+    def inner(a, b, *args, **kwargs):
+        if a.ndim == 4:
+            seen.append(b.shape[-1])   # b is k.T -> last dim = key extent
+        return real(a, b, *args, **kwargs)
+    return inner
+
+
+# ------------------------------------------------- causal early exit (exact)
+def test_causal_skip_is_exact():
+    """The skip must change *work*, never *values*: compare against both the
+    un-skipped path and the dense oracle, incl. N > query_chunk and a 2-D mask."""
+    from kvblockmass.reference import block_mass_reference
+
+    # N=600 > default chunk 256, so several chunks get different bounds
+    q, k = _qk(B=1, H_q=4, H_kv=2, N=600, D=16, seed=71)
+    skip = block_mass_reference(q, k, causal=True, block_size=64, query_chunk=256)
+    full = block_mass_reference(
+        q, k, causal=True, block_size=64, query_chunk=256, causal_skip=False
+    )
+    oracle = block_mass_naive(q, k, causal=True, block_size=64)
+    assert torch.allclose(skip, full, rtol=1e-9, atol=0.0)
+    assert torch.allclose(skip, oracle, rtol=1e-9, atol=1e-9)
+
+    # ragged N and a pair mask stacked on top of causality
+    q2, k2 = _qk(B=2, H_q=2, H_kv=1, N=129, D=8, seed=72)
+    mask2d = torch.rand(N_ := 129, 129, generator=torch.Generator().manual_seed(5)) > 0.5
+    a = block_mass_reference(q2, k2, attn_mask=mask2d, causal=True, block_size=32)
+    b = block_mass_reference(
+        q2, k2, attn_mask=mask2d, causal=True, block_size=32, causal_skip=False
+    )
+    c = block_mass_naive(q2, k2, attn_mask=mask2d, causal=True, block_size=32)
+    assert torch.allclose(a, b, rtol=1e-9, atol=0.0)
+    assert torch.allclose(a, c, rtol=1e-9, atol=1e-9)
+
+
+def test_causal_skip_actually_skips():
+    """Engagement proof: a gate that only compares values cannot tell "the
+    optimisation runs" from "the optimisation is a no-op". Record the key extent
+    handed to torch.matmul and assert the total work really shrinks."""
+    from kvblockmass import reference as ref_mod
+
+    q, k = _qk(B=1, H_q=2, H_kv=1, N=1024, D=8, seed=73)
+    seen = []
+    real_matmul = torch.matmul
+    recording_matmul = _recording_matmul(seen, real_matmul)
+
+    torch.matmul = recording_matmul
+    try:
+        ref_mod.block_mass_reference(q, k, causal=True, block_size=64, query_chunk=256)
+        with_skip = list(seen)
+        seen.clear()
+        ref_mod.block_mass_reference(
+            q, k, causal=True, block_size=64, query_chunk=256, causal_skip=False
+        )
+        without_skip = list(seen)
+    finally:
+        torch.matmul = real_matmul
+
+    # 4 chunks of 256 rows over N=1024: bounds are 256,512,768,1024
+    assert with_skip == [256, 512, 768, 1024], with_skip   # key extent per chunk
+    assert without_skip == [1024] * 4, without_skip
+    assert sum(with_skip) < 0.7 * sum(without_skip)

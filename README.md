@@ -1,5 +1,7 @@
 # kv-block-mass
 
+[![ci](https://github.com/aidless/kv-block-mass/actions/workflows/ci.yml/badge.svg)](https://github.com/aidless/kv-block-mass/actions/workflows/ci.yml)
+
 **Block-granular attention mass in O(N) memory — reference + Triton kernels, cross-vendor (CUDA / ROCm).**
 
 Companion of [`aidless/paged-kv`](https://github.com/aidless/paged-kv): paged-kv manages block
@@ -60,6 +62,15 @@ Honest reading, both directions:
   benchmarking only the GPU that flatters the kernel. Tuning (BLOCK sizes, fewer
   atomics, fp16 accumulation experiments) is open work.
 
+Causal early exit (`causal_skip`, on by default): under a causal mask, key columns past a
+query block's **last** row are masked for every row of that block, so they contribute exactly
+0 and are never touched. Measured on CPU (torch 2.14.1, 8 threads, streaming reference,
+`query_chunk=256`, median of 3): N=2048 **291.2 → 123.5 ms (2.36×)**, N=4096
+**1417.2 → 496.0 ms (2.86×)**, output **bit-identical** (max relative diff 0.0e+00).
+The Triton kernel applies the same bound as a dynamic loop trip count. The bound is
+mutation-tested: `EARLY_EXIT_TOO_TIGHT` (using the block's first row instead of its last,
+which silently drops the diagonal block) is one of the four injections the oracle must catch.
+
 Correctness across backends: Triton-vs-reference agreement ≤ 1.6e-5 max relative error
 on both CUDA and ROCm; the fp64 dense oracle agrees to ~1e-6 on every bucket.
 
@@ -77,7 +88,8 @@ src/kvblockmass/triton_kernel.py  fused Triton: two passes over k (max+denom, th
 tests/naive.py                    dense [B,H,N,N] oracle — TESTS ONLY
 tests/test_reference.py           sum rule, GQA, ragged blocks, masks, NaN discipline
 tests/test_triton.py              reference-vs-kernel agreement (GPU runners only)
-tests/mutation_gate.py            injects 3 real bugs, asserts the oracle CATCHES all
+tests/mutation_gate.py            injects 4 real bugs (2 shapes), asserts the oracle CATCHES all
+.github/workflows/ci.yml          CPU test suite + mutation gate on every push
 bench/bench_block_mass.py         CUDA-Event timing + peak-memory, JSON/MD output
 kaggle/run_bench_kernel.py        T4 entry point
 docs/reading-notes.md             what we learned from torch_npu / torch_musa / aiter
@@ -88,9 +100,10 @@ docs/reading-notes.md             what we learned from torch_npu / torch_musa / 
 The gate that matters is **exact comparison against the dense oracle**, not correlation.
 In a 2026-10 incident on the predecessor experiment (`kvfrag`), dropping the causal mask left
 Pearson correlation > 0.999 while relative error was ~0.2 — "looks correlated" is not
-correctness. `tests/mutation_gate.py` proves the oracle catches: dropped causality,
-missing softmax denominator, and bucket off-by-one (measured max errors 3.5e2 / 4.9e4 /
-5.8e2 respectively, control 2.3e-13).
+correctness. `tests/mutation_gate.py` proves the oracle catches: dropped causality, missing softmax
+denominator, bucket off-by-one, and an over-tight causal early-exit bound (measured max
+errors 3.5e2 / 4.9e4 / 5.8e2 / 6.1e2 at N=128 and 7.5e2 / 2.6e5 / 1.0e3 / 7.0e2 at N=600;
+control 2.3e-13 / 5.7e-13).
 
 ## Usage
 

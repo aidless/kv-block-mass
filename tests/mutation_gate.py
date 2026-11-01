@@ -1,6 +1,6 @@
 """Mutation gate: prove the test suite has teeth.
 
-Injects three realistic bugs into block-mass implementations and asserts the
+Injects four realistic bugs into block-mass implementations and asserts the
 naive-oracle comparison CATCHES every one of them (plus a control: the correct
 implementation passes). Run:  python tests/mutation_gate.py
 
@@ -12,6 +12,10 @@ Bugs (drawn from real failure modes of this operator family):
      normalized): totals drift by ~N per row.
   3. BUCKET_OFF_BY_ONE — key columns land in bucket (c // bs) + 1 with the
      last bucket wrapping to 0: shape-right, values wrong.
+  4. EARLY_EXIT_TOO_TIGHT — the causal key-truncation bound uses the chunk's
+     first row instead of its last, silently dropping the diagonal block. This
+     is the exact failure mode of the optimisation itself: skipping is only
+     valid up to the LAST row of the chunk.
 """
 
 import sys
@@ -47,9 +51,16 @@ def _reference_variant(q, k, causal, block_size, bug: str):
 
     for start in range(0, N, chunk):
         stop = min(start + chunk, N)
-        rows_keep = keep[start:stop]
+        # causal key truncation, as in the real implementation. The bound must be
+        # the chunk's LAST row (stop); using `start` is the injected bug below.
+        if causal and bug != "CAUSAL_DROPPED":
+            n_lim = start if bug == "EARLY_EXIT_TOO_TIGHT" else stop
+        else:
+            n_lim = N
+        rows_keep = keep[start:stop, :n_lim]
         row_has_any = rows_keep.any(dim=-1)
-        scores = (q[:, :, start:stop] @ k_full[:, :, start:stop].transpose(-1, -2)) * scale
+        # NOTE: keys are never sliced by query chunk (that was a real bug once)
+        scores = (q[:, :, start:stop] @ k_full[:, :, :n_lim].transpose(-1, -2)) * scale
         scores = scores.masked_fill(~rows_keep, float("-inf"))
         if bug == "NO_DENOM":
             weights = torch.exp(scores)
@@ -60,45 +71,43 @@ def _reference_variant(q, k, causal, block_size, bug: str):
                 row_has_any.view(1, 1, -1, 1), weights, torch.zeros_like(weights)
             )
             weights = torch.nan_to_num(weights, nan=0.0)
-        contrib = weights.sum(dim=(0, 1))                 # [C, N]
-        mass.index_add_(0, col_block, contrib.sum(dim=0))
+        contrib = weights.sum(dim=(0, 1))                 # [C, n_lim]
+        mass.index_add_(0, col_block[:n_lim], contrib.sum(dim=0))
 
     return mass
 
 
 def main() -> int:
-    torch.manual_seed(0)
-    B, H_q, H_kv, N, D = 2, 4, 2, 128, 16
-    g = torch.Generator().manual_seed(99)
-    q = torch.randn(B, H_q, N, D, generator=g, dtype=torch.float64)
-    k = torch.randn(B, H_kv, N, D, generator=g, dtype=torch.float64)
     block_size = 32
-
-    nv = block_mass_naive(q, k, causal=True, block_size=block_size)
-    tol = 1e-8
-
-    # control: the honest implementation must PASS the oracle comparison
-    ok = _reference_variant(q, k, causal=True, block_size=block_size, bug="none")
-    ctrl_err = (ok - nv).abs().max().item()
-    assert torch.allclose(ok, nv, rtol=1e-5, atol=tol), f"CONTROL FAILED: err={ctrl_err}"
-
-    results = []
-    for bug in ("CAUSAL_DROPPED", "NO_DENOM", "BUCKET_OFF_BY_ONE"):
-        bad = _reference_variant(q, k, causal=True, block_size=block_size, bug=bug)
-        caught = not torch.allclose(bad, nv, rtol=1e-5, atol=tol)
-        max_err = (bad - nv).abs().max().item()
-        results.append((bug, caught, max_err))
-
-    print(f"control (no bug): max|err| = {ctrl_err:.3e}  -> PASSED (as required)")
     all_caught = True
-    for bug, caught, err in results:
-        print(f"{bug:18s} max|err| = {err:.3e}  -> {'CAUGHT' if caught else 'MISSED'}")
-        all_caught &= caught
+    for N in (128, 600):          # 600 > chunk 256: the truncation actually varies per chunk
+        torch.manual_seed(0)
+        B, H_q, H_kv, D = 2, 4, 2, 16
+        g = torch.Generator().manual_seed(99)
+        q = torch.randn(B, H_q, N, D, generator=g, dtype=torch.float64)
+        k = torch.randn(B, H_kv, N, D, generator=g, dtype=torch.float64)
+
+        nv = block_mass_naive(q, k, causal=True, block_size=block_size)
+        tol = 1e-8
+
+        # control: the honest implementation must PASS the oracle comparison
+        ok = _reference_variant(q, k, causal=True, block_size=block_size, bug="none")
+        ctrl_err = (ok - nv).abs().max().item()
+        assert torch.allclose(ok, nv, rtol=1e-5, atol=tol), f"N={N} CONTROL FAILED: err={ctrl_err}"
+        print(f"N={N}: control (no bug) max|err| = {ctrl_err:.3e}  -> PASSED (as required)")
+
+        for bug in ("CAUSAL_DROPPED", "NO_DENOM", "BUCKET_OFF_BY_ONE",
+                    "EARLY_EXIT_TOO_TIGHT"):
+            bad = _reference_variant(q, k, causal=True, block_size=block_size, bug=bug)
+            caught = not torch.allclose(bad, nv, rtol=1e-5, atol=tol)
+            max_err = (bad - nv).abs().max().item()
+            print(f"N={N}: {bug:20s} max|err| = {max_err:.3e}  -> {'CAUGHT' if caught else 'MISSED'}")
+            all_caught &= caught
 
     if not all_caught:
         print("MUTATION GATE FAILED: at least one bug escaped the oracle comparison")
         return 1
-    print("MUTATION GATE PASSED: all 3 injected bugs caught, control passes")
+    print("MUTATION GATE PASSED: all 4 injected bugs caught (both N), control passes")
     return 0
 
 

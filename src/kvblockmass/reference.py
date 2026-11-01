@@ -41,6 +41,7 @@ def block_mass_reference(
     scale: float | None = None,
     query_chunk: int = 256,
     device: str | torch.device | None = None,
+    causal_skip: bool = True,
 ) -> torch.Tensor:
     """Block-pooled column sums of the softmax attention matrix, O(N) memory.
 
@@ -56,6 +57,10 @@ def block_mass_reference(
             knob; peak score buffer is [B, H_q, query_chunk, N].
         device: override device for the computation (e.g. run on GPU while
             inputs are small CPU tensors).
+        causal_skip: with `causal`, truncate the key axis at the chunk's last
+            query row — every column beyond it is masked for *all* rows in the
+            chunk, so it contributes exactly 0 to every bucket (exact, not an
+            approximation). Disable only to A/B the optimisation itself.
 
     Returns:
         mass [num_blocks] on `q.device` (float32 accumulation, same dtype as
@@ -90,7 +95,10 @@ def block_mass_reference(
 
     for start in range(0, N, query_chunk):
         stop = min(start + query_chunk, N)
-        rows_keep = keep[start:stop]                          # [C, N]
+        # Causal early exit: column c >= stop is masked for every row in this
+        # chunk, so it contributes exactly 0 (exact, not an approximation).
+        n_lim = stop if (causal and causal_skip) else N
+        rows_keep = keep[start:stop, :n_lim]                  # [C, n_lim]
         # rows that have at least one allowed key — others would softmax to NaN
         row_has_any = rows_keep.any(dim=-1)                   # [C]
 
@@ -99,21 +107,21 @@ def block_mass_reference(
         # whenever N > query_chunk — caught by a Kaggle T4 run, see git log)
         scores = torch.matmul(
             q[:, :, start:stop].to(acc_dtype),
-            k_full.to(acc_dtype).transpose(-1, -2),
-        ) * scale                                             # [B, H, C, N]
+            k_full[:, :, :n_lim].to(acc_dtype).transpose(-1, -2),
+        ) * scale                                             # [B, H, C, n_lim]
 
         scores = scores.masked_fill(~rows_keep, float("-inf"))
-        weights = torch.softmax(scores, dim=-1)               # [B, H, C, N]
+        weights = torch.softmax(scores, dim=-1)               # [B, H, C, n_lim]
         # fully-masked rows -> NaN; they must contribute exactly 0
         weights = torch.where(
             row_has_any.view(1, 1, -1, 1), weights, torch.zeros_like(weights)
         )
         weights = torch.nan_to_num(weights, nan=0.0)
 
-        # pool columns into block buckets: sum batch/head/query rows -> [C, N],
-        # then over rows -> [N], then scatter-add into block buckets
-        contrib = weights.sum(dim=(0, 1))                     # [C, N]
-        mass.index_add_(0, col_block, contrib.sum(dim=0).to(acc_dtype))
+        # pool columns into block buckets: sum batch/head/query rows -> [C, n],
+        # then over rows -> [n_lim], then scatter-add into block buckets
+        contrib = weights.sum(dim=(0, 1))                     # [C, n_lim]
+        mass.index_add_(0, col_block[:n_lim], contrib.sum(dim=0).to(acc_dtype))
 
     return mass
 

@@ -109,3 +109,22 @@ def test_triton_sum_rule_gpu():
     q, k = _qk(B=2, H_q=4, H_kv=2, N=512, seed=53)
     tri = block_mass_triton(q, k, causal=False, block_size=64)
     assert tri.sum().item() == pytest.approx(2 * 4 * 512, rel=1e-3)
+
+
+@cuda
+def test_triton_causal_skip_is_exact():
+    """The kernel's causal key truncation must match the un-truncated kernel
+    exactly (same bound as the reference: last row of the query block)."""
+    from kvblockmass.triton_kernel import block_mass_triton
+
+    q, k = _qk(B=1, H_q=4, H_kv=2, N=1024, D=32, seed=83)
+    skip = block_mass_triton(q, k, causal=True, block_size=64)
+    full = block_mass_triton(q, k, causal=True, block_size=64, causal_skip=False)
+    rel = ((skip - full).abs() / full.abs().clamp_min(1e-6)).max().item()
+    assert rel < 1e-6, f"early exit changed values: max rel {rel}"
+    # and it must still match the reference (which skips too)
+    from kvblockmass.reference import block_mass_reference
+
+    ref = block_mass_reference(q, k, causal=True, block_size=64)
+    rel_ref = ((skip - ref).abs() / ref.abs().clamp_min(1e-6)).max().item()
+    assert rel_ref < 1e-4, f"triton vs reference rel {rel_ref}"

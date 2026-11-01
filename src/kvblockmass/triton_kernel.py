@@ -33,6 +33,7 @@ def _block_mass_kernel(
     BLOCK_N: tl.constexpr,
     MASK_2D: tl.constexpr,            # mask is [N, N] (else [N] column mask)
     CAUSAL: tl.constexpr,
+    EARLY_EXIT: tl.constexpr,         # causal early exit (exact; A/B knob)
 ):
     pid_m = tl.program_id(0)          # query block id
     pid_bh = tl.program_id(1)         # flat batch*head id
@@ -48,6 +49,16 @@ def _block_mass_kernel(
     offs_d = tl.arange(0, BLOCK_D)
     row_valid = offs_m < N
 
+    # Causal early exit: with a lower-triangular mask, columns >= q_start +
+    # BLOCK_M are masked for EVERY row of this query block, so they contribute
+    # exactly 0 to every bucket. Skipping them is exact (not an approximation)
+    # and roughly halves the key traversal for causal scoring. Below, n_end is
+    # a runtime scalar, so these loops are dynamic-trip-count scf.for loops.
+    if CAUSAL and EARLY_EXIT:
+        n_end = tl.minimum(N, q_start + BLOCK_M)
+    else:
+        n_end = N
+
     # base pointers
     q_ptr = Q + pid_bh * stride_qb
     k_ptr = K + (b * H_kv + kv_h) * stride_kb
@@ -56,7 +67,7 @@ def _block_mass_kernel(
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
 
     # ------------------------------------------------ pass 1: row max + denom
-    for n_start in range(0, N, BLOCK_N):
+    for n_start in range(0, n_end, BLOCK_N):
         offs_n = n_start + tl.arange(0, BLOCK_N)
         col_valid = offs_n < N
         k_tile = tl.load(
@@ -95,7 +106,7 @@ def _block_mass_kernel(
     # ------------------------------------------------ pass 2: bucketed add
     denom = tl.where(l_i == 0.0, 1.0, l_i)                    # dead rows -> /1
     m_final = tl.where(m_i == float("-inf"), 0.0, m_i)
-    for n_start in range(0, N, BLOCK_N):
+    for n_start in range(0, n_end, BLOCK_N):
         offs_n = n_start + tl.arange(0, BLOCK_N)
         col_valid = offs_n < N
         k_tile = tl.load(
@@ -143,6 +154,7 @@ def block_mass_triton(
     scale: float | None = None,
     BLOCK_M: int = 64,
     BLOCK_N: int = 64,
+    causal_skip: bool = True,
 ):
     B, H_q, N, D = q.shape
     H_kv = k.shape[1]
@@ -178,7 +190,7 @@ def block_mass_triton(
         scale,
         block_size,
         D=D, BLOCK_D=triton.next_power_of_2(D), BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N,
-        MASK_2D=mask_2d, CAUSAL=causal,
+        MASK_2D=mask_2d, CAUSAL=causal, EARLY_EXIT=causal_skip,
         num_warps=4,
     )
     return mass
