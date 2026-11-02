@@ -43,5 +43,13 @@ jobs:
       - name: mutation gate (inject bugs, require all caught)
         run: python tests/mutation_gate.py
 
+      # Statistical layers fail differently: a mutant survives as a wrong number,
+      # not a wrong shape. This gate reruns the real suites under mutant plugins
+      # (-p tests.mutants.X) and requires each one to make the suite fail.
+      - name: mutation gate (policy / certificate / ledger)
+        run: python tests/mutation_gate_evict.py
+
       - name: package imports cleanly
-        run: python -c "import kvblockmass, kvblockmass.reference; print(kvblockmass.__name__)"
+        run: |
+          python -c "import kvblockmass, kvblockmass.reference; print(kvblockmass.__name__)"
+          python -c "import kvblockmass.evict, kvblockmass.certificate, kvblockmass.budget; print('layers ok')"

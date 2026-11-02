@@ -79,23 +79,86 @@ numbers recovered from stdout after the final write hit Kaggle's read-only FS) a
 `bench/bench_cuda_T4_v6_final.json` (worker v6, status COMPLETE, code at commit 278d479).
 They agree within run-to-run noise — e.g. N=8192 triton 89.8 vs 91.6 ms, 28 MiB both.
 
+## Layers 2–4: policy, certificate, byte ledger
+
+The kernel says *what the mass is*. The next three layers answer questions that a results table
+usually gets away with not answering: **which blocks to drop, how wrong that choice is, and how
+many bytes were actually kept.** They came from two papers read closely; the full accounting of
+what was taken, what was refused and what the measurements changed is in
+[`docs/evolution-from-papers.md`](docs/evolution-from-papers.md).
+
+```python
+from kvblockmass.evict import design_from_scores
+from kvblockmass.certificate import error_certificate, full_cache_output, relative_error
+from kvblockmass.budget import CacheLayout, audit_layout
+
+design = design_from_scores(token_scores, tail_budget=256, n_sinks=4, recency=32, top_slice=128)
+cert = error_certificate(scores, values, design.keep, design.pi, design.certainty, delta=0.1)
+print(cert.radius)                    # relative-error bound, from the retained set alone
+print(audit_layout(layout, kept).as_row())   # what a "25% budget" really holds
+```
+
+Measured, CPU, 2026-11-01 (printed by the tests, so the README cannot drift from them):
+
+| property | measured |
+|---|---|
+| certificate coverage at δ=0.1 | **1.000** at (N=1024, 25%), (N=4096, 25%), (N=4096, 50%) |
+| certificate tightness | median radius/error **1.83–5.06** (loose, bounded, not vacuous) |
+| certificate ranking | Spearman **0.926** over budgets {12.5%, 25%, 50%} |
+| design unbiasedness | Hájek mean over **800 designs**: bias **0.00413**; top-k fixed error **0.2002** (48×) |
+| design vs top-k, power-law scores | **0.0627 vs 0.1806** (2.88× in the design's favour, N=4096, 25%) |
+| design vs top-k, near-Gaussian scores | 0.8641 vs **0.6323** — *top-k wins here* (asserted, not hidden) |
+| deterministic scheme's blindness (Thm 1) | realized error **0.1485 → 1.0390 (7.0×)** with bit-identical retained statistics |
+
+And the byte ledger, on 28 layers × 8 heads × N=4096 × D=128 × fp16 (full cache **448 MiB**):
+
+| storage strategy | bytes | fraction of full | verdict |
+|---|---|---|---|
+| dense + per-head mask, claims 25% | 469,876,736 | **100.02%** | `holds_full_cache = True` |
+| ragged, 1024 kept tokens/head | 117,497,856 | **25.01%** | budget physically enforced |
+
+The mask costs **0.024%** of the cache, which is precisely why "same budget" comparisons can
+compare 4× different memory. The audit reports both numbers instead of one ratio.
+
+The regime boundary is the honest headline: the design wins on heavy-tailed score distributions
+and **loses** to top-k on near-Gaussian ones, where the only thing it buys is auditability. Both
+directions are tests (`test_design_wins_on_heavy_tailed_scores`,
+`test_topk_wins_on_near_gaussian_scores`) so the claim cannot be generalised by a later edit.
+
 ## Layout
 
 ```
 src/kvblockmass/reference.py      O(N) PyTorch: query-chunk streaming + bucket scatter-add
 src/kvblockmass/triton_kernel.py  fused Triton: two passes over k (max+denom, then add),
                                    tl.atomic_add into block buckets
+src/kvblockmass/evict.py          Poisson design: certainty set (top slice + sinks + recency) + tail
+src/kvblockmass/certificate.py    Hájek estimate + empirical-Bernstein radius (O(|S|) per head)
+src/kvblockmass/budget.py         byte ledger: what a policy holds vs the budget it claims
 tests/naive.py                    dense [B,H,N,N] oracle — TESTS ONLY
 tests/test_reference.py           sum rule, GQA, ragged blocks, masks, NaN discipline
 tests/test_triton.py              reference-vs-kernel agreement (GPU runners only)
+tests/test_evict.py               design bounds, expected retention, Hájek offset, reproducibility
+tests/test_certificate.py         coverage/tightness/ranking/unbiasedness/regime/Theorem-1
+tests/test_budget.py              byte arithmetic + the mask-vs-ragged verdicts
 tests/mutation_gate.py            injects 4 real bugs (2 shapes), asserts the oracle CATCHES all
+tests/mutation_gate_evict.py      runs the real suites under 5 mutant plugins; all must fail
 .github/workflows/ci.yml          CPU test suite + mutation gate on every push
 bench/bench_block_mass.py         CUDA-Event timing + peak-memory, JSON/MD output
 kaggle/run_bench_kernel.py        T4 entry point
 docs/reading-notes.md             what we learned from torch_npu / torch_musa / aiter
+docs/evolution-from-papers.md     what two KV papers changed, and what was refused
 ```
 
 ## Testing discipline
+
+Two gates, because the two halves of the repo fail differently. The kernel half is compared against
+a dense fp64 oracle in-process (`tests/mutation_gate.py`). The statistical half is gated by running
+**the real test files under mutant plugins** (`tests/mutation_gate_evict.py`, `-p tests.mutants.X`):
+`NO_HAJEK_OFFSET`, `MISSING_VARIANCE`, `NO_TOP_SLICE`, `NO_BLOCK_TABLE`, `ALWAYS_ENFORCED` — each
+must make the suite fail, with a clean-tree control that must pass. Building it paid for itself
+immediately: `MISSING_VARIANCE` **survived** the first version of the suite, because coverage was
+only tested at 25% budget where the range term dominates the radius; adding a 50% budget case
+(variance share there is 0.56–0.70) killed it.
 
 The gate that matters is **exact comparison against the dense oracle**, not correlation.
 In a 2026-10 incident on the predecessor experiment (`kvfrag`), dropping the causal mask left
