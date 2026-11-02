@@ -125,6 +125,18 @@ and **loses** to top-k on near-Gaussian ones, where the only thing it buys is au
 directions are tests (`test_design_wins_on_heavy_tailed_scores`,
 `test_topk_wins_on_near_gaussian_scores`) so the claim cannot be generalised by a later edit.
 
+### Composing them
+
+`reclaim.plan_reclaim(block_mass, block_size, layout, tail_budget, ...)` is the
+one entry point that joins the layers: it takes what the kernel actually emits
+(per-*block* mass), broadcasts it to tokens, runs the design, and returns a
+`ReclaimPlan` whose `card` states kept tokens **and** absolute bytes. The card is
+JSON-ready so a results table can be generated from it instead of retyped.
+
+`examples/policy_card.py` runs the whole chain on synthetic Q/K and prints one.
+Its `as_stored_frac` is the number that keeps this honest: a plan keeping 24.6% of
+tokens still holds 100.05% of the cache unless the selection is stored ragged.
+
 ## Layout
 
 ```
@@ -134,19 +146,22 @@ src/kvblockmass/triton_kernel.py  fused Triton: two passes over k (max+denom, th
 src/kvblockmass/evict.py          Poisson design: certainty set (top slice + sinks + recency) + tail
 src/kvblockmass/certificate.py    Hájek estimate + empirical-Bernstein radius (O(|S|) per head)
 src/kvblockmass/budget.py         byte ledger: what a policy holds vs the budget it claims
+src/kvblockmass/reclaim.py        the glue: block mass -> design -> realized tokens -> bytes
 tests/naive.py                    dense [B,H,N,N] oracle — TESTS ONLY
 tests/test_reference.py           sum rule, GQA, ragged blocks, masks, NaN discipline
 tests/test_triton.py              reference-vs-kernel agreement (GPU runners only)
 tests/test_evict.py               design bounds, expected retention, Hájek offset, reproducibility
 tests/test_certificate.py         coverage/tightness/ranking/unbiasedness/regime/Theorem-1
 tests/test_budget.py              byte arithmetic + the mask-vs-ragged verdicts
+tests/test_reclaim.py             the layers compose: mass drives the plan, bytes are stated
 tests/mutation_gate.py            injects 4 real bugs (2 shapes), asserts the oracle CATCHES all
-tests/mutation_gate_evict.py      runs the real suites under 5 mutant plugins; all must fail
+tests/mutation_gate_evict.py      runs the real suites under 6 mutant plugins; all must fail
 .github/workflows/ci.yml          CPU test suite + mutation gate on every push
 bench/bench_block_mass.py         CUDA-Event timing + peak-memory, JSON/MD output
 kaggle/run_bench_kernel.py        T4 entry point
 docs/reading-notes.md             what we learned from torch_npu / torch_musa / aiter
 docs/evolution-from-papers.md     what two KV papers changed, and what was refused
+examples/policy_card.py           one command, whole chain, prints the card a table would quote
 ```
 
 ## Testing discipline

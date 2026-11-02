@@ -32,6 +32,8 @@ MUTANTS = [
      "ragged storage forgets block-table overhead"),
     ("ALWAYS_ENFORCED", "tests.mutants.always_enforced", "tests/test_budget.py",
      "ledger stamps 'enforced' regardless of the arithmetic"),
+    ("IGNORE_MASS", "tests.mutants.ignore_mass", "tests/test_reclaim.py",
+     "plan broadcasts a constant instead of the kernel's block mass"),
 ]
 
 
@@ -59,8 +61,9 @@ def main() -> int:
 
     control = _run("tests/test_certificate.py", None)
     control2 = _run("tests/test_budget.py", None)
-    ok_control = control.returncode == 0 and control2.returncode == 0
-    print(f"CONTROL  clean tree: exit={control.returncode}/{control2.returncode} "
+    control3 = _run("tests/test_reclaim.py", None)
+    ok_control = control.returncode == 0 and control2.returncode == 0 and control3.returncode == 0
+    print(f"CONTROL  clean tree: exit={control.returncode}/{control2.returncode}/{control3.returncode} "
           f"{'PASS' if ok_control else 'FAIL (suite is not green to begin with)'}")
     if not ok_control:
         print(control.stdout[-2500:])

@@ -52,4 +52,9 @@ jobs:
       - name: package imports cleanly
         run: |
           python -c "import kvblockmass, kvblockmass.reference; print(kvblockmass.__name__)"
-          python -c "import kvblockmass.evict, kvblockmass.certificate, kvblockmass.budget; print('layers ok')"
+          python -c "import kvblockmass.evict, kvblockmass.certificate, kvblockmass.budget, kvblockmass.reclaim; print('layers ok')"
+
+      # The example is the only place a user sees the whole chain at once, so it
+      # is smoke-run here: a doc example that no longer runs is a broken promise.
+      - name: end-to-end example
+        run: python examples/policy_card.py

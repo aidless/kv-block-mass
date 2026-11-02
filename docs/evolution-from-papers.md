@@ -104,3 +104,11 @@ PYTHONPATH=src python -m pytest tests/ -q            # 49 passed, 8 skipped (GPU
 PYTHONPATH=src python tests/mutation_gate.py         # kernel: 4 injections, all caught
 PYTHONPATH=src python tests/mutation_gate_evict.py   # policy layers: 5 mutants, all caught
 ```
+
+## What the layers compose into
+
+`reclaim.plan_reclaim` is the seam. The papers describe a *method* (design + certificate)
+and a *ledger* critique (mask stored densely is not a saving); neither hands you the
+join, and the join is where a "24.6% budget" can silently still be a full cache.
+The plan therefore returns the card a table would quote — `kept_tokens` **and**
+`bytes_as_stored` / `bytes_enforced` — so the two cannot drift apart in prose.
