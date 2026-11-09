@@ -53,7 +53,7 @@
 
 - 本机**无可用 GPU**：`lspci` 有 RTX 3060 Mobile，但无驱动（无 `/dev/nvidia*`、无 nvidia 模块、无 nvidia-smi），`torch.cuda.is_available()=False`。因此本地只能跑 CPU 参考实现与语法检查
 - GPU 执行通道（已验证可用）：Kaggle kernel（T4，免费）；AMD Radeon Cloud 实例（`root@36.150.116.206 -p 34677`，ROCm，gfx1100 级，端口当前 OPEN，额度剩 28 credits）
-- 本机 Python 环境：`/home/liuzewen/venv_casmi_all/bin/python` → torch 2.14.1+cu130 / triton 3.8.0（可导入，无 GPU）
+- 本机 Python 环境：本地虚拟环境（绝对路径不入库）→ torch 2.14.1+cu130 / triton 3.8.0（可导入，无 GPU）
 - 依赖上限：numpy + torch + triton（+ pytest），不引第三方 kernel 库
 - 许可证：MIT
 

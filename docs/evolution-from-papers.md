@@ -4,9 +4,10 @@ This repo started as a single question: *can per-block attention mass be compute
 materializing `[B, H, N, N]`?* The kernel answers yes. Everything below that line came from
 reading two papers closely and asking what a *library* would have to prove, not just measure.
 
-Every number here was produced by code in this repo (tests print them; see
-`tests/test_certificate.py`, `tests/test_budget.py`, `tests/mutation_gate_evict.py`). Nothing in
-this document is projected.
+Checked numeric tables live in the README and are compared to committed JSON by
+`scripts/check_readme_drift.py`. This note does not keep a second results table.
+Where an older draft quoted a figure that is not in those files, it is marked
+UNKNOWN below. Nothing here is a projected speedup.
 
 ## The papers
 
@@ -25,63 +26,49 @@ are reproduced in this repo's results tables.
 
 ### 1. The certainty set must contain the score top slice (a real bug of mine)
 
-First draft: certainty = attention sinks + recency window only, tail sampled by Poisson. Result at
-25% budget: **Hájek 0.2298 vs top-k 0.0952** median relative error — the design lost badly. Cause:
-the heaviest tokens were being *sampled* rather than kept, so variance exploded. P2's certainty set
-includes the score top slice; with `top_slice = budget//2` the same comparison at N=4096 became
-**0.0627 vs 0.1806 (2.88× in the design's favour)**. This is recorded as mutant
-`NO_TOP_SLICE` in the mutation gate so the regression cannot come back silently.
+First draft: certainty = attention sinks + recency window only, tail sampled by Poisson. The
+heaviest tokens were being *sampled* rather than kept, and the design lost to top-k. The pair of
+median errors from that draft is not in any committed JSON, so it is UNKNOWN. P2's certainty set
+includes the score top slice; with `top_slice = budget//2` the comparison is the README regime
+rows (Zipf favours the design). The regression is mutant `NO_TOP_SLICE`.
 
 ### 2. The design wins on heavy-tailed scores — and **loses** on near-Gaussian ones
 
 Asserted in both directions (`test_design_wins_on_heavy_tailed_scores`,
-`test_topk_wins_on_near_gaussian_scores`), N=4096, 25% budget, 40 draws:
+`test_topk_wins_on_near_gaussian_scores`). The measured medians are the README regime rows.
 
-| score distribution | design + Hájek | top-k at matched count | winner |
-|---|---|---|---|
-| power-law (Zipf, permuted) | **0.0627** | 0.1806 | design (2.88×) |
-| near-Gaussian (`N(0,1)` logits) | 0.8641 | **0.6323** | top-k (1.37×) |
-
-So the honest claim is **not** "this beats top-k". It is: *on heavy-tailed score distributions the
-design is better at the same byte count; on flat distributions top-k wins and the design's only
-purchase is auditability.* A README that claimed the first row alone would be misleading, which is
-why the second row is a test that fails if top-k ever stops winning.
+The honest claim is not "this beats top-k". On heavy-tailed score distributions the design is
+better at the same count; on near-Gaussian scores top-k wins and the design's only purchase is
+auditability. The losing side is a test, so a later edit cannot keep only the win.
 
 ### 3. What the certificate buys, measured
 
-| property | measured | how |
-|---|---|---|
-| coverage at δ=0.1 | **1.000** at (N=1024, 25%), (N=4096, 25%), (N=4096, 50%), 60 draws each | radius contains the realized error every time — conservative, not nominal |
-| tightness | median radius/error **1.83–5.06** | a certificate 1000× loose would be decoration; bounded by test |
-| ranking | Spearman **0.926** over budgets {12.5%, 25%, 50%}, N=4096 | usable as a risk signal even when loose |
-| unbiasedness | Hájek mean over **800 designs**: bias **0.00413**; top-k's fixed error on the same problem: **0.2002** (48×) | the reason the design exists |
-| variance term is load-bearing | variance share of the radius: **0.05** at 12.5%, **0.19–0.29** at 25%, **0.56–0.70** at 50% | range-only coverage collapses to 0.68 (N=1024) / **0.00** (N=4096) at 50% — this is why the coverage test is parametrized by budget |
+Coverage, tightness, ranking, unbiasedness, and variance-share medians are the README policy
+table, including the small-budget rows the tightness assertion does not gate. An earlier note
+quoted a single tightness range and a variance-share range that hid which `N` was which. Those
+collapsed ranges are withdrawn. Use the table.
 
-That last row came from the mutation gate: `MISSING_VARIANCE` initially **survived**, because the
-suite only tested 25% budget where the range term dominates. Adding the 50% budget to the coverage
-test made the mutant die. A gate that cannot kill a mutant is a decoration; this one now kills 5/5.
+`MISSING_VARIANCE` initially survived, because the suite only tested one budget where the range
+term dominates. Adding the larger budget made the mutant die. The gate is
+`tests/mutation_gate_evict.py`: six mutants, each must fail, plus a clean control.
 
 ### 4. Theorem 1 as an executable test
 
 P2's Theorem 1 says a deterministic value-blind scheme has no consistent error estimator. Test
 form: keep the retained set fixed, perturb **only the evicted values**, and check that every
-retained statistic is bit-identical while the realized relative error moves
-**0.1485 → 1.0390 (7.0×)**, saturating near 1.0 as the evicted mass dominates. If this ever stops
-being true, the certificate has become unnecessary and the module's premise is wrong.
+retained statistic is bit-identical while the realized relative error moves. The archived
+min, max, and spread are the README theorem rows. The error saturates as the evicted values
+dominate. If the move ever stops, the certificate has become unnecessary and the module's
+premise is wrong.
 
-### 5. "Same budget" can be 4× different bytes
+### 5. "Same budget" can still be the full cache
 
-Byte ledger on a realistic shape (28 layers, 8 heads, N=4096, D=128, fp16 → full cache **448 MiB**):
-
-| storage strategy | bytes | fraction of full | verdict |
-|---|---|---|---|
-| dense + per-head mask (claims 25%) | 469,876,736 | **100.02%** | `holds_full_cache=True` |
-| ragged (1024 kept tokens/head) | 117,497,856 | **25.01%** | budget physically enforced |
-
-The mask costs **0.024%** of the cache — which is exactly why the failure mode in P1 is cheap to
-commit and invisible in a "budget" column: **a policy can claim 25% and hold 100% for 0.02% extra
-memory.** The audit exposes both numbers (`as_stored_frac`, `enforced_frac`) so a results table
-cannot quote the flattering one.
+The byte ledger for the shape in the README (layers, heads, sequence, dim, fp16) is the README
+ledger table. Read both boolean columns. `nominal_is_enforced` follows the ragged byte count
+even when the stored layout is a mask, and `holds_full_cache` is true on that mask row. The
+mask overhead is why P1's failure mode is cheap to commit and invisible in a single "budget"
+column: a policy can claim a fraction of the tokens and still hold the full cache. The audit
+exposes both fractions so a results table cannot quote the flattering one.
 
 ## Honest boundaries
 
@@ -100,15 +87,19 @@ cannot quote the flattering one.
 ## Reproduction
 
 ```bash
-PYTHONPATH=src python -m pytest tests/ -q            # 49 passed, 8 skipped (GPU cases need CUDA/HIP)
-PYTHONPATH=src python tests/mutation_gate.py         # kernel: 4 injections, all caught
-PYTHONPATH=src python tests/mutation_gate_evict.py   # policy layers: 5 mutants, all caught
+python scripts/check_readme_drift.py
+python -m pytest tests/ -q
+python tests/mutation_gate.py
+python tests/mutation_gate_evict.py
 ```
+
+GPU numeric tests skip without a device. A pass count is not frozen here, because it goes stale
+the moment a test is added. CI is the list of commands in the README.
 
 ## What the layers compose into
 
 `reclaim.plan_reclaim` is the seam. The papers describe a *method* (design + certificate)
 and a *ledger* critique (mask stored densely is not a saving); neither hands you the
-join, and the join is where a "24.6% budget" can silently still be a full cache.
+join, and the join is where a token budget can silently still be a full cache.
 The plan therefore returns the card a table would quote — `kept_tokens` **and**
 `bytes_as_stored` / `bytes_enforced` — so the two cannot drift apart in prose.

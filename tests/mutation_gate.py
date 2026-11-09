@@ -77,8 +77,14 @@ def _reference_variant(q, k, causal, block_size, bug: str):
     return mass
 
 
-def main() -> int:
+def collect_rows() -> tuple[list[dict], bool]:
+    """Run the four injections. Returns (rows, all_caught).
+
+    Rows are the measured max absolute errors. Callers that archive them must
+    keep this function as the only implementation — do not retype the numbers.
+    """
     block_size = 32
+    rows: list[dict] = []
     all_caught = True
     for N in (128, 600):          # 600 > chunk 256: the truncation actually varies per chunk
         torch.manual_seed(0)
@@ -94,16 +100,34 @@ def main() -> int:
         ok = _reference_variant(q, k, causal=True, block_size=block_size, bug="none")
         ctrl_err = (ok - nv).abs().max().item()
         assert torch.allclose(ok, nv, rtol=1e-5, atol=tol), f"N={N} CONTROL FAILED: err={ctrl_err}"
-        print(f"N={N}: control (no bug) max|err| = {ctrl_err:.3e}  -> PASSED (as required)")
+        rows.append({
+            "N": N, "bug": "control", "max_abs_err": ctrl_err, "status": "PASSED",
+            "B": B, "H_q": H_q, "H_kv": H_kv, "D": D, "block_size": block_size,
+            "dtype": "float64", "seed": 99,
+        })
 
         for bug in ("CAUSAL_DROPPED", "NO_DENOM", "BUCKET_OFF_BY_ONE",
                     "EARLY_EXIT_TOO_TIGHT"):
             bad = _reference_variant(q, k, causal=True, block_size=block_size, bug=bug)
             caught = not torch.allclose(bad, nv, rtol=1e-5, atol=tol)
             max_err = (bad - nv).abs().max().item()
-            print(f"N={N}: {bug:20s} max|err| = {max_err:.3e}  -> {'CAUGHT' if caught else 'MISSED'}")
+            rows.append({
+                "N": N, "bug": bug, "max_abs_err": max_err,
+                "status": "CAUGHT" if caught else "MISSED",
+                "B": B, "H_q": H_q, "H_kv": H_kv, "D": D, "block_size": block_size,
+                "dtype": "float64", "seed": 99,
+            })
             all_caught &= caught
+    return rows, all_caught
 
+
+def main() -> int:
+    rows, all_caught = collect_rows()
+    for row in rows:
+        print(
+            f"N={row['N']}: {row['bug']:20s} max|err| = {row['max_abs_err']:.3e}"
+            f"  -> {row['status']}"
+        )
     if not all_caught:
         print("MUTATION GATE FAILED: at least one bug escaped the oracle comparison")
         return 1

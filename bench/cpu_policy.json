@@ -1,0 +1,120 @@
+{
+  "meta": {
+    "kind": "cpu-policy",
+    "produced_by": "scripts/measure_cpu_snapshots.py",
+    "timestamp_utc": "2026-11-09T19:39:07.110495+00:00",
+    "torch": "2.15.0+cpu",
+    "python": "3.12.3",
+    "platform": "Linux-6.12.113+-x86_64-with-glibc2.39",
+    "cpu_count": 4,
+    "torch_threads": 4,
+    "cuda_available": false,
+    "note": "CPU snapshot from the machine that ran this script. Not a GPU bench. Do not hand-edit the numbers."
+  },
+  "rows": [
+    {
+      "kind": "coverage",
+      "n": 1024,
+      "budget_frac": 0.125,
+      "delta": 0.1,
+      "trials": 60,
+      "covered_frac": 1.0,
+      "median_radius_over_err": 14.01480495595021,
+      "median_variance_share": 0.04921718096744174
+    },
+    {
+      "kind": "coverage",
+      "n": 1024,
+      "budget_frac": 0.25,
+      "delta": 0.1,
+      "trials": 60,
+      "covered_frac": 1.0,
+      "median_radius_over_err": 5.062740028618254,
+      "median_variance_share": 0.18838200359781335
+    },
+    {
+      "kind": "coverage",
+      "n": 1024,
+      "budget_frac": 0.5,
+      "delta": 0.1,
+      "trials": 60,
+      "covered_frac": 1.0,
+      "median_radius_over_err": 2.254999376972821,
+      "median_variance_share": 0.560336524917071
+    },
+    {
+      "kind": "coverage",
+      "n": 4096,
+      "budget_frac": 0.125,
+      "delta": 0.1,
+      "trials": 60,
+      "covered_frac": 1.0,
+      "median_radius_over_err": 8.5157853132082,
+      "median_variance_share": 0.08575315297983442
+    },
+    {
+      "kind": "coverage",
+      "n": 4096,
+      "budget_frac": 0.25,
+      "delta": 0.1,
+      "trials": 60,
+      "covered_frac": 1.0,
+      "median_radius_over_err": 3.170696542609069,
+      "median_variance_share": 0.2884739285097206
+    },
+    {
+      "kind": "coverage",
+      "n": 4096,
+      "budget_frac": 0.5,
+      "delta": 0.1,
+      "trials": 60,
+      "covered_frac": 1.0,
+      "median_radius_over_err": 1.8308902459419139,
+      "median_variance_share": 0.6926012365271738
+    },
+    {
+      "kind": "ranking",
+      "n": 4096,
+      "budgets": [
+        0.125,
+        0.25,
+        0.5
+      ],
+      "trials": 80,
+      "spearman": 0.9256944444444445
+    },
+    {
+      "kind": "unbiased",
+      "n": 1024,
+      "trials": 800,
+      "budget_frac": 0.25,
+      "hajek_mean_bias": 0.004132100713332284,
+      "topk_fixed_error": 0.20022157288583814
+    },
+    {
+      "kind": "regime",
+      "distribution": "zipf",
+      "n": 4096,
+      "budget_frac": 0.25,
+      "trials": 40,
+      "design_median_rel": 0.06268047921888596,
+      "topk_median_rel": 0.18060850147824292
+    },
+    {
+      "kind": "regime",
+      "distribution": "gauss",
+      "n": 4096,
+      "budget_frac": 0.25,
+      "trials": 40,
+      "design_median_rel": 0.8640940289117709,
+      "topk_median_rel": 0.6322562914369838
+    },
+    {
+      "kind": "theorem1",
+      "n": 48,
+      "min_rel": 0.14849030994645052,
+      "max_rel": 1.0390156164406672,
+      "spread": 6.997194744999613
+    }
+  ]
+}

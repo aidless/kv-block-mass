@@ -1,5 +1,9 @@
 name: ci
 
+# CPU only. This workflow does not run bench/bench_block_mass.py and does not
+# install a CUDA or ROCm wheel. GPU numbers in the README are checked against
+# committed bench JSON by scripts/check_readme_drift.py. They are not re-measured.
+
 on:
   push:
     branches: [main]
@@ -8,7 +12,7 @@ on:
 
 jobs:
   cpu-tests:
-    name: cpu tests (py${{ matrix.python }})
+    name: cpu tests, no GPU bench (py${{ matrix.python }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -22,39 +26,32 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
 
-      # CPU wheels only: this job has no GPU and must never silently skip
-      # into a green run. GPU tests are marked skipif and are exercised on
-      # Kaggle T4 / AMD ROCm instances (results committed under bench/).
+      # CPU wheels only. GPU tests are skipif and are not executed here.
+      # Triton is installed so the kernel module imports. Nothing launches it.
       - name: install (CPU torch)
         run: |
           python -m pip install --upgrade pip
           pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.0"
           pip install pytest
-          # triton is only needed to import the kernel module (structural test);
-          # no GPU is required for import + signature introspection.
           pip install triton
           pip install -e .
+
+      - name: drift check (README vs committed JSON, no GPU)
+        run: python scripts/check_readme_drift.py
 
       - name: reference + structural tests
         run: pytest tests/ -q
 
-      # The gate that makes the suite meaningful: inject 4 known bugs into the
-      # implementation and fail the build unless the oracle catches every one.
       - name: mutation gate (inject bugs, require all caught)
         run: python tests/mutation_gate.py
 
-      # Statistical layers fail differently: a mutant survives as a wrong number,
-      # not a wrong shape. This gate reruns the real suites under mutant plugins
-      # (-p tests.mutants.X) and requires each one to make the suite fail.
       - name: mutation gate (policy / certificate / ledger)
         run: python tests/mutation_gate_evict.py
 
       - name: package imports cleanly
         run: |
-          python -c "import kvblockmass, kvblockmass.reference; print(kvblockmass.__name__)"
+          python -c "import kvblockmass, kvblockmass.reference; print(kvblockmass.__version__)"
           python -c "import kvblockmass.evict, kvblockmass.certificate, kvblockmass.budget, kvblockmass.reclaim; print('layers ok')"
 
-      # The example is the only place a user sees the whole chain at once, so it
-      # is smoke-run here: a doc example that no longer runs is a broken promise.
       - name: end-to-end example
         run: python examples/policy_card.py

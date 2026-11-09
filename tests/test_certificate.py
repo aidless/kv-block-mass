@@ -92,10 +92,11 @@ def _one_draw(n, seed, *, kind="zipf", budget_frac=0.25, delta=0.1):
 
 @pytest.mark.parametrize("n,budget_frac", [(1024, 0.25), (4096, 0.25), (4096, 0.5)])
 def test_certificate_covers_realized_error(n, budget_frac):
-    """Coverage at more than one budget: the variance term only carries weight
-    at large budgets (measured variance share of the radius: 0.05 at 12.5%,
-    0.19-0.29 at 25%, 0.56-0.70 at 50%). A suite that only tests one budget
-    cannot tell whether the variance term is load-bearing at all."""
+    """Coverage at more than one budget: the variance term carries more of the
+    radius as the budget grows. Medians are archived in bench/cpu_policy.json
+    (drift-checked from the README) and are not re-typed in this comment. A
+    suite that only tests one budget cannot tell whether the variance term is
+    load-bearing at all."""
     trials, delta = 60, 0.1
     covered, radii, errs = 0, [], []
     for t in range(trials):
@@ -224,9 +225,10 @@ def test_deterministic_retained_set_cannot_identify_its_own_error():
     pi = torch.ones(n, dtype=torch.float64)   # deterministic scheme: no design stored
 
     errs, first = [], None
-    # the spread saturates: as c grows the evicted values dominate the true
-    # output, so the relative error approaches 1.0 (measured: 0.148 -> 1.039).
-    # The claim is a >5x move with bit-identical retained information.
+    # The spread saturates: as c grows the evicted values dominate the true
+    # output. The archived min, max, and spread are bench/cpu_policy.json
+    # (theorem1). The claim checked here is a move of more than 5x with
+    # bit-identical retained information.
     for c in (0.0, 0.5, 2.0, 8.0, 32.0, 512.0):
         v = values.clone()
         v[~keep] = v[~keep] + c                # evicted values only
