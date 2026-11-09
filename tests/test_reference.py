@@ -44,6 +44,14 @@ def test_matches_naive_oracle(causal):
 
 
 # --------------------------------------------------------------- GQA shapes
+def test_gqa_indivisible_raises():
+    from kvblockmass.reference import block_mass_reference
+
+    q, k = _qk(B=1, H_q=3, H_kv=2, N=16, D=8, seed=1)
+    with pytest.raises(ValueError, match="H_q % H_kv"):
+        block_mass_reference(q, k, block_size=8)
+
+
 def test_gqa_matches_naive():
     from kvblockmass.reference import block_mass_reference
 

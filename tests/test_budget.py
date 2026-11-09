@@ -104,6 +104,25 @@ def test_invalid_layouts_raise():
         bytes_ragged(_layout(), -1)
 
 
+def test_committed_ledger_json_matches_library():
+    """The README ledger table is checked against this file. Recompute it."""
+    import json
+    from pathlib import Path
+
+    from tests.cpu_observe import ledger_snapshot
+
+    path = Path(__file__).resolve().parents[1] / "bench" / "cpu_ledger.json"
+    data = json.loads(path.read_text())
+    live = ledger_snapshot()
+    assert live["layout"] == data["layout"]
+    assert live["kept_per_head"] == data["kept_per_head"]
+    assert live["bytes_full"] == data["bytes_full"]
+    assert live["mask_overhead_bytes"] == data["mask_overhead_bytes"]
+    assert live["mask"] == data["mask"]
+    assert live["ragged"] == data["ragged"]
+    assert data["full_mib"] == live["bytes_full"] / (1024 ** 2)
+
+
 def test_audit_row_is_json_ready():
     import json
     row = audit_layout(_layout(), 1024, mask_stored=False).as_row()

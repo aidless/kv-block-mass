@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "kind": "cpu-ledger",
+    "produced_by": "scripts/measure_cpu_snapshots.py",
+    "timestamp_utc": "2026-11-09T19:39:03.827897+00:00",
+    "torch": "2.15.0+cpu",
+    "python": "3.12.3",
+    "platform": "Linux-6.12.113+-x86_64-with-glibc2.39",
+    "cpu_count": 4,
+    "torch_threads": 4,
+    "cuda_available": false,
+    "note": "CPU snapshot from the machine that ran this script. Not a GPU bench. Do not hand-edit the numbers."
+  },
+  "layout": {
+    "n_layers": 28,
+    "n_heads": 8,
+    "seq_len": 4096,
+    "head_dim": 128,
+    "item_bytes": 2,
+    "block_size": 16
+  },
+  "kept_per_head": 1024,
+  "bytes_full": 469762048,
+  "full_mib": 448.0,
+  "mask_overhead_bytes": 114688,
+  "mask": {
+    "bytes": 469876736,
+    "fraction": 1.000244140625,
+    "holds_full_cache": true,
+    "nominal_is_enforced": true
+  },
+  "ragged": {
+    "bytes": 117497856,
+    "fraction": 0.2501220703125,
+    "holds_full_cache": false,
+    "nominal_is_enforced": true
+  }
+}

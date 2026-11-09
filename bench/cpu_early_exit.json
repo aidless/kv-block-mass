@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "kind": "cpu-early-exit",
+    "produced_by": "scripts/measure_cpu_snapshots.py",
+    "timestamp_utc": "2026-11-09T19:39:06.149921+00:00",
+    "torch": "2.15.0+cpu",
+    "python": "3.12.3",
+    "platform": "Linux-6.12.113+-x86_64-with-glibc2.39",
+    "cpu_count": 4,
+    "torch_threads": 4,
+    "cuda_available": false,
+    "note": "CPU snapshot from the machine that ran this script. Not a GPU bench. Do not hand-edit the numbers."
+  },
+  "rows": [
+    {
+      "N": 2048,
+      "B": 1,
+      "H_q": 8,
+      "H_kv": 2,
+      "D": 64,
+      "block_size": 64,
+      "query_chunk": 256,
+      "dtype": "float64",
+      "causal": true,
+      "seed": 0,
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "wall_clock": "UNKNOWN"
+    },
+    {
+      "N": 4096,
+      "B": 1,
+      "H_q": 8,
+      "H_kv": 2,
+      "D": 64,
+      "block_size": 64,
+      "query_chunk": 256,
+      "dtype": "float64",
+      "causal": true,
+      "seed": 0,
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "wall_clock": "UNKNOWN"
+    }
+  ]
+}

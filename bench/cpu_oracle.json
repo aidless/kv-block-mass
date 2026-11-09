@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "kind": "cpu-oracle",
+    "produced_by": "scripts/measure_cpu_snapshots.py",
+    "timestamp_utc": "2026-11-09T19:39:03.840986+00:00",
+    "torch": "2.15.0+cpu",
+    "python": "3.12.3",
+    "platform": "Linux-6.12.113+-x86_64-with-glibc2.39",
+    "cpu_count": 4,
+    "torch_threads": 4,
+    "cuda_available": false,
+    "note": "CPU snapshot from the machine that ran this script. Not a GPU bench. Do not hand-edit the numbers."
+  },
+  "rows": [
+    {
+      "B": 2,
+      "H_q": 4,
+      "H_kv": 2,
+      "N": 128,
+      "D": 32,
+      "seed": 7,
+      "causal": false,
+      "block_size": 64,
+      "dtype": "float64",
+      "max_abs": 1.7053025658242404e-13,
+      "max_rel": 3.33134001294116e-16,
+      "sum_abs_err": 2.2737367544323206e-13
+    },
+    {
+      "B": 2,
+      "H_q": 4,
+      "H_kv": 2,
+      "N": 128,
+      "D": 32,
+      "seed": 7,
+      "causal": true,
+      "block_size": 64,
+      "dtype": "float64",
+      "max_abs": 1.1368683772161603e-13,
+      "max_rel": 5.377526591451695e-16,
+      "sum_abs_err": 2.2737367544323206e-13
+    },
+    {
+      "B": 1,
+      "H_q": 8,
+      "H_kv": 2,
+      "N": 96,
+      "D": 16,
+      "seed": 3,
+      "causal": true,
+      "block_size": 32,
+      "dtype": "float64",
+      "max_abs": 2.2737367544323206e-13,
+      "max_rel": 4.225996070597345e-16,
+      "sum_abs_err": 1.1368683772161603e-13
+    }
+  ]
+}
