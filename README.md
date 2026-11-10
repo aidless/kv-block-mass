@@ -14,6 +14,26 @@ fp32, it is 512 MiB **per head per batch**. We stream over query chunks and scat
 sums into `num_blocks` buckets, so peak memory is `O(B·H·chunk·N)` for the reference and one
 score tile for the Triton kernel.
 
+## Install & reproduce
+
+```bash
+pip install -e .                # only dependency: torch>=2.0 (CPU wheel is enough for the reference)
+pip install -e ".[test]"        # + pytest
+pytest tests/ -q                # full suite; tests/test_triton.py needs a CUDA/ROCm device
+python examples/policy_card.py  # end-to-end: design -> certificate -> byte card, one command
+```
+
+Verified 2026-11-10 on a clean checkout: `pytest tests/ -q --ignore=tests/test_triton.py`
+→ **55 passed** (the excluded file is the GPU-only kernel-agreement suite); the example
+prints a card with `kept_fraction 0.2461` and `as_stored_frac 1.0005` — the 24.6%-of-tokens
+/ 100.05%-of-cache headline below, straight from the code.
+
+The benchmark figure below is regenerated from the committed JSON, not retyped:
+
+```bash
+python3 docs/make_bench_figure.py   # reads bench/bench_cuda_T4_20261031.json -> docs/figures/
+```
+
 ## What it computes
 
 ```
@@ -39,6 +59,13 @@ block_size=64, causal; median of 5; memory = `torch.cuda.max_memory_allocated`.
 | 2048 | 405 | 12.32 | 87 | 15.19 | 13 | 3.0e-6 |
 | 4096 | — | 40.18 | 174 | **22.59** | 18 | 7.5e-6 |
 | 8192 | — | 161.34 | 372 | **89.76** (1.8×) | **28** (13× less) | 1.5e-5 |
+
+![T4 peak memory and latency, reference vs Triton kernel](docs/figures/bench-t4-mem-latency.png)
+
+*Peak memory (left) and latency (right) on Tesla T4, plotted from
+`bench/bench_cuda_T4_20261031.json` by `docs/make_bench_figure.py`: the kernel's
+footprint is flat in N (one score tile) while the streaming reference grows linearly,
+and the kernel wins on speed from N=4096.*
 
 **AMD Radeon W7900-class (gfx1100)** (ROCm 7.2, torch 2.14.1+rocm7.2, Triton 3.5.1/HIP —
 `bench/bench_rocm_20261031T172739Z.json`):
@@ -182,6 +209,22 @@ correctness. `tests/mutation_gate.py` proves the oracle catches: dropped causali
 denominator, bucket off-by-one, and an over-tight causal early-exit bound (measured max
 errors 3.5e2 / 4.9e4 / 5.8e2 / 6.1e2 at N=128 and 7.5e2 / 2.6e5 / 1.0e3 / 7.0e2 at N=600;
 control 2.3e-13 / 5.7e-13).
+
+## Limits
+
+- **Speed is not a win everywhere**: on RDNA3/HIP (gfx1100) the Triton kernel is
+  *slower* than the PyTorch streaming reference at every benched N (see the ROCm table) —
+  the `input_precision="ieee"` 64×64 dot compiles poorly there. Tuning is open work.
+- **Benched shapes are narrow**: B=1, H_q=8, H_kv=2, D=64, block=64, N ≤ 8192, two GPUs
+  (T4, gfx1100). Larger batches/heads and fp16 accumulation paths are unmeasured.
+- **The dense oracle is tests-only** (`tests/naive.py`): it materialises `[B,H,N,N]` and
+  exists to be wrong on purpose — it is a correctness reference, not a usable path.
+- **Mutation gates cover enumerated bugs, not all bugs**: 4 kernel injections +
+  6 statistical mutants are what the oracle is proven to catch (`EARLY_EXIT_TOO_TIGHT`,
+  `NO_HAJEK_OFFSET`, `MISSING_VARIANCE`, …); a novel failure mode can still pass.
+- **The certificate is a bound, not a guarantee of usefulness**: coverage 1.000 at δ=0.1
+  with median radius/error 1.83–5.06 — valid but loose; the design *loses* to top-k on
+  near-Gaussian scores (0.8641 vs 0.6323, asserted in a test, not hidden).
 
 ## Usage
 
