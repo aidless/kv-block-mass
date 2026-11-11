@@ -6,6 +6,8 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
 jobs:
   cpu-tests:
     name: cpu tests (py${{ matrix.python }})
