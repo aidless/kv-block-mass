@@ -6,6 +6,8 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
 jobs:
   cpu-tests:
     name: cpu tests (py${{ matrix.python }})
@@ -15,9 +17,9 @@ jobs:
       matrix:
         python: ["3.10", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -43,5 +45,18 @@ jobs:
       - name: mutation gate (inject bugs, require all caught)
         run: python tests/mutation_gate.py
 
+      # Statistical layers fail differently: a mutant survives as a wrong number,
+      # not a wrong shape. This gate reruns the real suites under mutant plugins
+      # (-p tests.mutants.X) and requires each one to make the suite fail.
+      - name: mutation gate (policy / certificate / ledger)
+        run: python tests/mutation_gate_evict.py
+
       - name: package imports cleanly
-        run: python -c "import kvblockmass, kvblockmass.reference; print(kvblockmass.__name__)"
+        run: |
+          python -c "import kvblockmass, kvblockmass.reference; print(kvblockmass.__name__)"
+          python -c "import kvblockmass.evict, kvblockmass.certificate, kvblockmass.budget, kvblockmass.reclaim; print('layers ok')"
+
+      # The example is the only place a user sees the whole chain at once, so it
+      # is smoke-run here: a doc example that no longer runs is a broken promise.
+      - name: end-to-end example
+        run: python examples/policy_card.py
