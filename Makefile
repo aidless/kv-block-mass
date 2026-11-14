@@ -6,3 +6,4 @@
 
 eval:
 	python3 -m pytest tests/ -q
+	python3 eval/run_cases.py

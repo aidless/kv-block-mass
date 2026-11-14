@@ -316,3 +316,40 @@ mass = block_mass_triton(q, k, causal=True, block_size=64)   # [64]
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## 验收标准与复算
+
+验收判据：本仓判为合格的条件是 `python3 eval/run_cases.py` 通过率必须为 100%（20/20），且 `make eval` 退出码必须为 0；任何一条失败即判为不合格。
+
+`eval/cases.jsonl` 的 20 条题按 axis 分组（同一 axis ≤3 条），每条都真调本仓 API（或真解析本仓数据文件），期望值现算不抄文档：
+
+| axis | 条数 | 判什么 |
+|---|---|---|
+| reference/sum | 3 | 全 mask / causal / 成对 mask 下 Σmass == B·H_q·N 的求和律，以及全屏蔽行贡献恰好 0 |
+| reference/naive | 2 | 与 `tests/naive.py` 稠密 oracle 的最大绝对差、ragged 末块的桶数 |
+| reference/gqa | 2 | GQA 头扩展（H_q % H_kv 检查）与 GQA 下的总 mass |
+| evict/design | 3 | certainty 集合大小、设计期望保留数 n_expected、eps 正下界 |
+| evict/expand | 2 | block→token 分数广播、块数覆盖不足时报错 |
+| evict/hajek | 1 | Hájek 校正项 log(1/pi) |
+| budget/bytes | 3 | 稠密 / 掩码 / ragged 三种字节账 |
+| budget/audit | 2 | mask 存法 holds_full_cache=True、ragged 存法 holds_full_cache=False |
+| certificate/hajek | 2 | π≡1 时 Hájek 估计等于全 cache 输出、保留集为空时报错 |
+
+三条命令（在仓库根执行，退出码即判据）：
+
+```bash
+python3 eval/run_cases.py            # 期望 20/20；任一 FAIL 则退出码 1
+python3 eval/run_cases.py --selftest # 期望 19/20 且退出码 0：证明这套题会红，不是装饰
+python3 eval/run_cases.py --save     # 额外落盘 eval/run-report.json（total/passed/failed/failed_by_axis）
+```
+
+复算：每题的 `verify` 就是复算代码——`expr` 直接跑本仓实现取数、`raises` 断言异常类型，改一行实现就可能让对应题变红。`eval/run-report.json` 由 `--save` 从题库重建，含 `failed_by_axis` 归因；`make eval` 先跑既有 pytest 套件，再跑这套题库，任一步非零即整体失败。
+
+失败归因（按 axis 汇总，而不是只报总分）——`--selftest` 篡改 KVBM-01 期望值时的真实输出：
+
+```
+失败归因（按 axis）：
+  reference/sum: 1 条 —— KVBM-01
+```
+
+这样一眼能看出「断的是求和律那条，不是 GQA 也不是字节账」，而不是只看到一个从 100% 掉到 95% 的总分。

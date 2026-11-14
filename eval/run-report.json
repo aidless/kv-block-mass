@@ -1,0 +1,129 @@
+{
+ "total": 20,
+ "passed": 20,
+ "failed": 0,
+ "selftest": false,
+ "failed_by_axis": {},
+ "results": [
+  {
+   "id": "KVBM-01",
+   "axis": "reference/sum",
+   "ok": true,
+   "detail": "1023.9999999999999"
+  },
+  {
+   "id": "KVBM-02",
+   "axis": "reference/sum",
+   "ok": true,
+   "detail": "1023.9999999999999"
+  },
+  {
+   "id": "KVBM-03",
+   "axis": "reference/sum",
+   "ok": true,
+   "detail": "512.0"
+  },
+  {
+   "id": "KVBM-04",
+   "axis": "reference/naive",
+   "ok": true,
+   "detail": "1.1368683772161603e-13"
+  },
+  {
+   "id": "KVBM-05",
+   "axis": "reference/naive",
+   "ok": true,
+   "detail": "2"
+  },
+  {
+   "id": "KVBM-06",
+   "axis": "reference/gqa",
+   "ok": true,
+   "detail": "raised ValueError"
+  },
+  {
+   "id": "KVBM-07",
+   "axis": "reference/gqa",
+   "ok": true,
+   "detail": "767.9999999999999"
+  },
+  {
+   "id": "KVBM-08",
+   "axis": "evict/design",
+   "ok": true,
+   "detail": "12"
+  },
+  {
+   "id": "KVBM-09",
+   "axis": "evict/design",
+   "ok": true,
+   "detail": "34.0"
+  },
+  {
+   "id": "KVBM-10",
+   "axis": "evict/design",
+   "ok": true,
+   "detail": "raised ValueError"
+  },
+  {
+   "id": "KVBM-11",
+   "axis": "evict/expand",
+   "ok": true,
+   "detail": "9.0"
+  },
+  {
+   "id": "KVBM-12",
+   "axis": "evict/expand",
+   "ok": true,
+   "detail": "raised ValueError"
+  },
+  {
+   "id": "KVBM-13",
+   "axis": "evict/hajek",
+   "ok": true,
+   "detail": "2.079442"
+  },
+  {
+   "id": "KVBM-14",
+   "axis": "budget/bytes",
+   "ok": true,
+   "detail": "469762048"
+  },
+  {
+   "id": "KVBM-15",
+   "axis": "budget/bytes",
+   "ok": true,
+   "detail": "469876736"
+  },
+  {
+   "id": "KVBM-16",
+   "axis": "budget/bytes",
+   "ok": true,
+   "detail": "117497856"
+  },
+  {
+   "id": "KVBM-17",
+   "axis": "budget/audit",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "id": "KVBM-18",
+   "axis": "budget/audit",
+   "ok": true,
+   "detail": "False"
+  },
+  {
+   "id": "KVBM-19",
+   "axis": "certificate/hajek",
+   "ok": true,
+   "detail": "0.0"
+  },
+  {
+   "id": "KVBM-20",
+   "axis": "certificate/hajek",
+   "ok": true,
+   "detail": "raised ValueError"
+  }
+ ]
+}
