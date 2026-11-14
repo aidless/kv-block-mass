@@ -11,10 +11,9 @@ import json
 import pytest
 import torch
 
-from kvblockmass.budget import CacheLayout, audit_layout
+from kvblockmass.budget import CacheLayout
 from kvblockmass.reclaim import ReclaimPlan, plan_reclaim
 from kvblockmass.reference import block_mass_reference
-from kvblockmass.evict import design_from_scores
 
 
 def _layout(**kw):

@@ -4,7 +4,6 @@ Small enough to look free, large enough to make a "same budget" comparison wrong
 Must be caught by the ledger arithmetic.
 """
 
-import math
 
 from kvblockmass import budget as _b
 

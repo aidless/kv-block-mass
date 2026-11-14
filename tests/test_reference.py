@@ -1,6 +1,5 @@
 """Reference (O(N) memory) implementation tests. RED before reference.py exists."""
 
-import math
 
 import pytest
 import torch
